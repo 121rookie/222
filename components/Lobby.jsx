@@ -4,17 +4,23 @@ function Lobby({ playerData, onUpdatePlayerData, onEnterRoom, onViewCollection }
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [showDailyReward, setShowDailyReward] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(null);
+  const [dailyRewardAvailable, setDailyRewardAvailable] = useState(false);
 
   const rooms = window.GameData.rooms;
 
-  // Check for daily reward
+  // Check for daily reward availability
   React.useEffect(() => {
     const lastRewardTime = playerData.lastDailyReward || 0;
     const now = Date.now();
-    const oneDay = 24 * 60 * 60 * 1000;
+    const oneDay = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
     
-    if (now - lastRewardTime > oneDay) {
+    const isAvailable = (now - lastRewardTime) >= oneDay;
+    setDailyRewardAvailable(isAvailable);
+    
+    // Only auto-show if it's available and hasn't been shown recently
+    if (isAvailable && !sessionStorage.getItem('dailyRewardShown')) {
       setShowDailyReward(true);
+      sessionStorage.setItem('dailyRewardShown', 'true');
     }
   }, [playerData]);
 
@@ -24,6 +30,13 @@ function Lobby({ playerData, onUpdatePlayerData, onEnterRoom, onViewCollection }
     updatedPlayerData.lastDailyReward = Date.now();
     onUpdatePlayerData(updatedPlayerData);
     setShowDailyReward(false);
+    setDailyRewardAvailable(false);
+  };
+
+  const handleShowDailyReward = () => {
+    if (dailyRewardAvailable) {
+      setShowDailyReward(true);
+    }
   };
 
   const handleUnlockRoom = (roomId) => {
@@ -43,6 +56,21 @@ function Lobby({ playerData, onUpdatePlayerData, onEnterRoom, onViewCollection }
       return 'border-green-400 hover:border-green-300 hover:bg-green-400/10 cursor-pointer';
     }
     return 'border-gray-600 opacity-75 hover:border-gray-500';
+  };
+
+  const getTimeUntilNextReward = () => {
+    const lastRewardTime = playerData.lastDailyReward || 0;
+    const now = Date.now();
+    const oneDay = 24 * 60 * 60 * 1000;
+    const nextRewardTime = lastRewardTime + oneDay;
+    const timeLeft = nextRewardTime - now;
+    
+    if (timeLeft <= 0) return null;
+    
+    const hours = Math.floor(timeLeft / (60 * 60 * 1000));
+    const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+    
+    return `${hours}小时${minutes}分钟`;
   };
 
   const collectionProgress = window.GameStorage.getCollectionProgress(playerData);
@@ -99,10 +127,27 @@ function Lobby({ playerData, onUpdatePlayerData, onEnterRoom, onViewCollection }
           </button>
           
           <button
-            onClick={() => setShowDailyReward(true)}
-            className="p-6 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 rounded-xl text-white font-bold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg"
+            onClick={handleShowDailyReward}
+            disabled={!dailyRewardAvailable}
+            className={`p-6 rounded-xl text-white font-bold text-lg transition-all duration-300 transform hover:scale-105 shadow-lg relative ${
+              dailyRewardAvailable 
+                ? 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700' 
+                : 'bg-gradient-to-r from-gray-600 to-gray-700 cursor-not-allowed opacity-60'
+            }`}
           >
-            🎁 每日奖励 (50金币)
+            🎁 每日奖励 
+            {dailyRewardAvailable ? (
+              <span className="ml-2">(可领取)</span>
+            ) : (
+              <div className="text-sm mt-1">
+                {getTimeUntilNextReward() && `${getTimeUntilNextReward()}后可领取`}
+              </div>
+            )}
+            
+            {/* Available indicator */}
+            {dailyRewardAvailable && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
+            )}
           </button>
         </div>
 
@@ -198,7 +243,7 @@ function Lobby({ playerData, onUpdatePlayerData, onEnterRoom, onViewCollection }
       </div>
 
       {/* Daily Reward Modal */}
-      {showDailyReward && (
+      {showDailyReward && dailyRewardAvailable && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-8 text-center max-w-md mx-4">
             <h2 className="text-3xl font-bold mb-4 text-yellow-600">🎁 每日奖励</h2>
@@ -224,6 +269,34 @@ function Lobby({ playerData, onUpdatePlayerData, onEnterRoom, onViewCollection }
                 稍后领取
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Reward Not Available Modal */}
+      {showDailyReward && !dailyRewardAvailable && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-8 text-center max-w-md mx-4">
+            <h2 className="text-2xl font-bold mb-4 text-gray-600">⏰ 每日奖励</h2>
+            <p className="text-gray-700 mb-6">
+              您今天已经领取过每日奖励了！
+            </p>
+            
+            <div className="bg-gray-100 rounded-lg p-4 mb-6">
+              <div className="text-lg font-bold text-gray-700">
+                {getTimeUntilNextReward() ? 
+                  `${getTimeUntilNextReward()}后可再次领取` : 
+                  '即将可以领取'
+                }
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setShowDailyReward(false)}
+              className="w-full px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors"
+            >
+              确定
+            </button>
           </div>
         </div>
       )}
